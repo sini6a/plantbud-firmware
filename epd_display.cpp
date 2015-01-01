@@ -2,51 +2,80 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include "pins.h"
+#include <GxEPD2_BW.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
 
-#define EPD_WIDTH  248
-#define EPD_HEIGHT 128
+#define USE_HSPI_FOR_EPD
+#define EPD_WIDTH  200
+#define EPD_HEIGHT 200
 
-void EPD_sendCommand(uint8_t command) {
-  digitalWrite(PIN_DC, LOW);
-  digitalWrite(PIN_CS, LOW);
-  SPI.transfer(command);
-  digitalWrite(PIN_CS, HIGH);
+int partialUpdateCount = 0;
+char partialUpdateCountString[16];
+
+// Create display instance
+// Parameters: CS, DC, RST, BUSY
+GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> display(GxEPD2_154_D67(PIN_CS, PIN_DC, PIN_RST, PIN_BUSY));
+
+// Use custom SPI instance
+SPIClass mySPI(FSPI);  // or HSPI if needed (depends on your board)
+
+void setupEPD() {
+  pinMode(10, OUTPUT);
+  pinMode(0, OUTPUT);
+  pinMode(20, OUTPUT);
+  
+  mySPI.begin(PIN_SCK, -1, PIN_MOSI, PIN_CS); // SCK, MISO (not used), MOSI, SS
+
+  display.epd2.selectSPI(mySPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
+  display.init(115200);
+  display.setRotation(0); // Adjust rotation as needed (0-3)
 }
 
-void EPD_sendData(uint8_t data) {
-  digitalWrite(PIN_DC, HIGH);
-  digitalWrite(PIN_CS, LOW);
-  SPI.transfer(data);
-  digitalWrite(PIN_CS, HIGH);
-}
+void updateDisplay(const String& battery, const String& moisture, const String& time = "") {
+  display.setTextColor(GxEPD_BLACK);  // Add this!
+  display.setPartialWindow(0, 0, 200, 200);
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
 
-void EPD_reset() {
-  digitalWrite(PIN_RST, LOW);
-  delay(200);
-  digitalWrite(PIN_RST, HIGH);
-  delay(200);
-}
+    display.setFont(&FreeSansBold12pt7b);
+    display.setCursor(10, 20);
+    display.print("PlantBud!");
 
-void EPD_waitUntilIdle() {
-  while (digitalRead(PIN_BUSY) == LOW) { // 0 = busy, 1 = idle
-    delay(100);
+    display.drawLine(0, 25, 200, 25, GxEPD_BLACK);
+
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(10, 60);
+    display.print("Battery: ");
+    display.println(battery + " V");
+
+    display.setCursor(10, 90);
+    display.print("Moisture: ");
+    display.println(moisture + " %");
+
+    if (time != "") {
+      display.setCursor(10, 120);
+      display.print("Updated: ");
+      display.println(time);
+    }
+
+    sprintf(partialUpdateCountString, "%01d", partialUpdateCount);  // Example: "03:42"
+    display.setCursor(10, 150);
+    display.print("Count: ");
+    display.println(partialUpdateCountString);
+
+  } while (display.nextPage());
+
+  // Optional cleanup after many partial updates
+  partialUpdateCount++;
+  if (partialUpdateCount >= 50) {
+    display.setFullWindow();
+    display.firstPage();
+    do {
+      display.fillScreen(GxEPD_WHITE);
+    } while (display.nextPage());
+    partialUpdateCount = 0;
   }
-}
-
-void EPD_clearScreen() {
-  int width_in_bytes = (EPD_WIDTH + 7) / 8; // 1 byte = 8 pixels
-  int height = EPD_HEIGHT;
-
-  EPD_sendCommand(0x10); // DATA_START_TRANSMISSION_1
-  for (int i = 0; i < width_in_bytes * height; i++) {
-    EPD_sendData(0x00); // Black pixel
-  }
-
-  EPD_sendCommand(0x13); // DATA_START_TRANSMISSION_2
-  for (int i = 0; i < width_in_bytes * height; i++) {
-    EPD_sendData(0xFF); // Black pixel
-  }
-
-  EPD_sendCommand(0x12); // DISPLAY_REFRESH
-  EPD_waitUntilIdle();
 }
