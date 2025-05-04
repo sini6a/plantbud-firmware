@@ -13,6 +13,7 @@
 
 int partialUpdateCount = 0;
 char partialUpdateCountString[16];
+bool forceRefresh = false;
 
 // Create display instance
 // Parameters: CS, DC, RST, BUSY
@@ -31,6 +32,34 @@ void setupEPD() {
   display.epd2.selectSPI(mySPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
   display.init(115200);
   display.setRotation(0); // Adjust rotation as needed (0-3)
+}
+
+void batteryLow(const String& voltage, const String& moisture) {
+      // 2. Display battery warning
+      display.setTextColor(GxEPD_BLACK);  // Add this!
+      display.setFullWindow();
+      display.firstPage();
+      do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setFont(&FreeSansBold12pt7b);
+        
+        // Center "LOW BATTERY" horizontally
+        int16_t tbx, tby;
+        uint16_t tbw, tbh;
+        String warning = "LOW BATTERY";
+        display.getTextBounds(warning, 0, 0, &tbx, &tby, &tbw, &tbh);
+        int x = (EPD_WIDTH - tbw) / 2;
+        int y = (EPD_HEIGHT / 2) - (tbh / 2);
+        display.setCursor(x, y);
+        display.setTextColor(GxEPD_BLACK);
+        display.print(warning);
+  
+        // Moisture at bottom
+        display.setFont(&FreeSans9pt7b);
+        display.setCursor(10, EPD_HEIGHT - 10);
+        display.print(moisture);
+  
+      } while (display.nextPage());  
 }
 
 void updateDisplay(const String& battery, const String& moisture, const String& time = "") {
